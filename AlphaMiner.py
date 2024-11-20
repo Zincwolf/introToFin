@@ -12,6 +12,7 @@ class AlphaMiner:
     def __init__(self, data: pd.DataFrame, hyps: dict) -> None:
         '''
         Args:
+            111
             data (pd.DataFrame): the result of `Drawer.cal()`.
             hyps (dict): the hyperparameters. Must contain the following keys: `MinCorr`, `MinRng`, `MinWinRate`.
         '''
