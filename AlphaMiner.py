@@ -127,7 +127,7 @@ class AlphaMiner:
         '''
         self.cal()
         # TODO: Find a better palette
-        palette = sns.color_palette("muted", 12)
+        palette = sns.color_palette("viridis", self.n_real)+sns.color_palette("Spectral",10)
         self.grouped_data.plot(color=palette)
         plt.ylabel('stock_exret')
         plt.title(self.f_name)
@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
     # NOTE: Define your own data path here
     data_path = os.path.dirname(os.getcwd())
-    data_path = os.path.join(data_path, 'introToFin_utils', 'data_z.csv')
+    data_path = os.path.join(data_path, 'codes\\introToFin-main', 'dataCleaned.csv')
 
     data = pd.read_csv(data_path)
     data = data[['date', 'stock_exret', f_name]]
