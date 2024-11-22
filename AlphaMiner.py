@@ -46,6 +46,7 @@ class AlphaMiner:
             columns=['factor', 'PIC36', 'PIC12', 'PICIR', 'RIC36', 'RIC12', 'RICIR', 'rng', 'WinRate']
         )
         self.output.loc[0, 'factor'] = f_name
+        self.n_real = 0
 
     def cal(self):
         '''
@@ -68,7 +69,8 @@ class AlphaMiner:
         self.grouped_data['group'] = self.grouped_data.groupby('month')[self.f_name].transform(cut)
         bm = self.grouped_data.groupby('month')['stock_exret'].mean().cumsum()
         self.grouped_data = self.grouped_data.groupby(['month', 'group'])['stock_exret'].mean().unstack().cumsum()
-        self.grouped_data['rng'] = np.abs(self.grouped_data[self.n - 1] - self.grouped_data[0])
+        self.n_real = self.grouped_data.columns.size
+        self.grouped_data['rng'] = np.abs(self.grouped_data[self.n_real - 1] - self.grouped_data[0])
         self.grouped_data['bm'] = bm
         # return self.grouped_data
 
@@ -111,7 +113,7 @@ class AlphaMiner:
         NOTE: call this method after calling `cal`.
         '''
         if self.output.loc[0,'PICIR'] >= 0:
-            temp = self.grouped_data.loc[:, self.n - 1]
+            temp = self.grouped_data.loc[:, self.n_real - 1]
         else:
             temp = self.grouped_data.loc[:, 0]
         tot_win = np.sum(
