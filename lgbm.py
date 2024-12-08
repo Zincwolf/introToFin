@@ -17,13 +17,21 @@ from tqdm import tqdm
 data_path = os.path.dirname(os.getcwd())
 data_path = os.path.join(data_path, 'introToFin_utils', 'stock_sample.csv')
 
+# XXX: New in 12.6 
+# Bad factors and useless columns
+# NOTE: Change the black_list path if necessary
+black_list = []
+with open('/Users/znw/Code_python/introToFin_utils/black_list.txt') as f:
+    black_list = f.read().splitlines()
+trivials = ['year', 'month', 'stock_ticker', 'comp_name']
+
 def load_data(data_path: str) -> pd.DataFrame:
     data = pd.read_csv(data_path)
     data['date'] = pd.to_datetime(data['date'])
     data.set_index('date', inplace=True)
     # The columns left: index, permno, stock_exret and 147 factors
     data.drop(
-        columns=['year', 'month', 'stock_ticker', 'comp_name'],
+        columns=trivials + black_list,
         inplace=True
     )
     return data
@@ -35,6 +43,8 @@ def split_data(
     '''
     Split the data into train and valid sets. 
     By default, the valid set is 2 years long.
+
+    TODO: 打乱一下训练集和测试集内部的数据
     '''
     val_et = val_st + pd.DateOffset(years=2) - dt.timedelta(days=1)
     len_val = len(data.loc[val_st:val_et])
@@ -61,21 +71,21 @@ def lgbm_reg(
         'boosting_type': 'gbdt',
         'objective': 'regression',
         'metric': 'rmse',
-        # 'num_leaves': 31,
-        'max_depth': 2,
-        'n_estimators': 80,
-        'min_data_in_leaf': 28,
-        # 'min_sum_hessian_in_leaf': 20,
-        'learning_rate': 0.06,
-        'num_iterations': 100,
+        'num_leaves': 6,
+        'max_depth': 3,
+        'n_estimators': 85,
+        'min_data_in_leaf': 40,
+        'learning_rate': 0.05,
+        'num_iterations': 95,
         'feature_fraction': 0.95,
         'bagging_fraction': 0.8,
         'bagging_freq': 10,
-        'verbose': 1,
-        'lambda_l1': 0.02,
-        'lambda_l2': 0.02,
+        'verbose': 0,
+        'lambda_l1': 0.087,
+        'lambda_l2': 0.26,
         'early_stopping_round': 50,
     }
+
 
     # 训练模型
     gbm = lgb.train(
@@ -109,6 +119,12 @@ if __name__ == '__main__':
         
         output = data.loc[test_st:test_et, ['permno','stock_exret']].copy()
         output['lgbm'] = y_pred
+
+        r2 = 1 - np.sum(
+            np.square(output['stock_exret'] - output['lgbm'])
+        ) / np.sum(np.square(output['stock_exret']))
+        print(f'R2 of {i + 2}: ', r2)
+
         out.append(output)
 
     out = pd.concat(out)
