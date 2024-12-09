@@ -1,6 +1,4 @@
 import lightgbm as lgb
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
 from scipy.stats.mstats import winsorize
 import pandas as pd
 import numpy as np
@@ -13,6 +11,7 @@ import random
 
 # NOTE: set working directory
 # 注意树模型的输入不需要标准化
+# 但是不清楚lambdarank是否需要
 data_path = os.path.dirname(os.getcwd())
 data_path = os.path.join(data_path, 'introToFin_utils', 'stock_sample.csv')
 
@@ -20,6 +19,7 @@ black_list = []
 # with open('/Users/znw/Code_python/introToFin_utils/black_list.txt') as f:
 #     black_list = f.read().splitlines()
 trivials = ['year', 'month', 'stock_ticker', 'comp_name']
+k = 10
 
 def load_data(
         data_path: str, 
@@ -41,12 +41,12 @@ def load_data(
         inplace=True
     )
 
-    # Group by months, ranks by high (1) to low (N).
-    # By default, apply average to tied ranks
+    # Group by months, ranks by high (1) to low (N). (ascending=False)
+    # 每个月rank会很大，有上千个，考虑转化为“重要性标签”，也就是将排名划分为k组梯队
     if is_y_rank:
-        data['stock_exret_rank'] = data.groupby(level=0)['stock_exret'].rank(
-            ascending=False, method='min'
-        )
+        # k = 10
+        grouped = data.groupby(level=0)['stock_exret']
+        data['stock_exret_rank'] = (grouped.rank(method='min') - 1) // (grouped.size() // k)
 
     return data
 
@@ -82,8 +82,11 @@ def split_data(
 
     # NOTE: We temporarily do not consider permno, or industry information
     # when training.
-    X_train = train.drop(columns=['stock_exret','permno'])
-    X_val = val.drop(columns=['stock_exret','permno'])
+    y_real_cols = ['permno', 'stock_exret']
+    if is_y_rank:
+        y_real_cols += ['stock_exret_rank']
+    X_train = train.drop(columns=y_real_cols)
+    X_val = val.drop(columns=y_real_cols)
 
     if is_y_rank:
         y_train, y_val = train['stock_exret_rank'], val['stock_exret_rank']
@@ -121,12 +124,12 @@ def lgbm_reg(
 
 if __name__ == '__main__':
 
-    # XXX: lightgbm.basic.LightGBMError: Label 122 is not less than the number of label mappings (31)
     params = {
         'objective': 'lambdarank',
-        'metric': 'ndcg',
-        'learning_rate': 0.05,
-        'max_depth': -1,
+        'metric': 'map',
+        'learning_rate': 0.1,
+        'max_depth': 10,
+        'n_estimators': 50,
         'verbose': 1,
     }
 
@@ -148,12 +151,32 @@ if __name__ == '__main__':
         
         output = data.loc[test_st:test_et, y_real_cols].copy()
         output['lgbm'] = y_pred
+        output_grouped = output.groupby(level=0)['lgbm']
+        output['lgbm_rank'] = (output_grouped.rank(method='min') - 1) // (output_grouped.size() // k)
 
         # Instead of R2, we choose Spearman Corr to measure accuracy.
-        sp_corr = output['lgbm'].corr(output['stock_exret_rank'], method='spearman')
+        sp_corr = output['lgbm_rank'].corr(output['stock_exret_rank'], method='spearman')
         print('Spearman Corr:', sp_corr)
 
         out.append(output)
 
     out = pd.concat(out)
+
+    print('##################################')
+
+    tot_corr = out['lgbm_rank'].corr(out['stock_exret_rank'], method='spearman')
+    print('Rank Corr of all test sets:', tot_corr)
+
+    best_group = out[out['lgbm_rank'] >= k - 1]
+    worst_group = out[out['lgbm_rank'] <= 1]
+    best_corr = best_group['stock_exret_rank'].corr(best_group['lgbm_rank'], method='spearman')
+    worst_corr = worst_group['stock_exret_rank'].corr(worst_group['lgbm_rank'], method='spearman')
+    print('The prediction accuracy of best stocks:', best_corr)
+    print('The prediction accuracy of worst stocks:', worst_corr)
+
+    best_ret = best_group['stock_exret'].mean()
+    worst_ret = worst_group['stock_exret'].mean()
+    print('Equal weight portfolio of predicted best stocks:', best_ret)
+    print('Equal weight portfolio of predicted worst stocks:', worst_ret)
+
     out.to_csv('output_lgbm.csv')
