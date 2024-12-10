@@ -13,19 +13,13 @@ def sharpe(data: pd.DataFrame, col: str):
     '''
     return data[col].mean() / data[col].std() * np.sqrt(12)
 
-def cum_ret(data: pd.DataFrame, col: str, is_plot: bool = True):
+def cum_ret(data: pd.DataFrame, col: str):
     '''
     Return the cumulative return of a return rate column.
     '''
     temp = data[col] + 1
-    temp = temp.cumprod() - 1 
-
-    if is_plot:
-        # TODO: 横坐标等绘图细节可能还要调节
-        plt.plot(temp)
-        plt.show()
-    
-    # return temp
+    temp = temp.cumprod() - 1
+    return temp
 
 def max_1m_loss(data: pd.DataFrame, col: str):
     '''
@@ -67,26 +61,36 @@ def long_short(data: pd.DataFrame, col: str, k: int = 10):
         lambda x: x.sort_values(col)
     )
     grouped = data.groupby(level=0, group_keys=False)['stock_exret']
-    best_group_ret = grouped.apply(
-        lambda x: x[-(len(x) // k):].mean()
+    # monthly stock limit: 50 ~ 100
+    f = lambda x: min(max(len(x) // k, 50), 100)
+    group_ret_gap = grouped.apply(
+        lambda x: x[-f(x):].mean() - x[:f(x)].mean()
     )
-    worst_group_ret = grouped.apply(
-        lambda x: x[:(len(x) // k)].mean()
-    )
-    return best_group_ret - worst_group_ret
+    return group_ret_gap
 
 if __name__ == '__main__':
     data = pd.read_csv('/Users/znw/Code_python/introToFin/output_lgbm.csv')
     data['date'] = pd.to_datetime(data['date'])
     data.set_index('date', inplace=True)
-    
+
     col = 'lgbm'
     port_ret = long_short(data, col).to_frame()
-    print(port_ret)
+    # print(port_ret)
 
     col = 'stock_exret'
     print('Annualized Sharpe:', sharpe(port_ret, col))
-    # print('Cummulative return:', cum_ret(port_ret, col))
     print('Max 1m loss:', max_1m_loss(port_ret, col))
     print('Max Drawdown:', max_drawdown(port_ret, col))
-    cum_ret(port_ret, col)
+    strategy_ret = cum_ret(port_ret, col)
+    
+
+    # Plot the benchmark return. Benchmark is the equal weighted 
+    # portfolio of all the stocks.
+    bm_ret = data.groupby(level=0)['stock_exret'].mean().to_frame()
+    bm_ret = cum_ret(bm_ret, col)
+
+    plt.plot(strategy_ret)
+    plt.plot(bm_ret)
+    plt.legend(['strategy', 'benchmark'])
+
+    plt.show()
