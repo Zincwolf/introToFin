@@ -6,32 +6,33 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
+from typing import Union, List
 
-def sharpe(data: pd.DataFrame, col: str):
+def sharpe(data: pd.DataFrame, cols: Union[str, List[str]]):
     '''
     Return the annualized sharpe ratio of a return rate column.
     '''
-    return data[col].mean() / data[col].std() * np.sqrt(12)
+    return data[cols].mean() / data[cols].std() * np.sqrt(12)
 
-def cum_ret(data: pd.DataFrame, col: str):
+def cum_ret(data: pd.DataFrame, cols: Union[str, List[str]]):
     '''
     Return the cumulative return of a return rate column.
     '''
-    temp = data[col] + 1
+    temp = data[cols] + 1
     temp = temp.cumprod() - 1
     return temp
 
-def max_1m_loss(data: pd.DataFrame, col: str):
+def max_1m_loss(data: pd.DataFrame, cols: Union[str, List[str]]):
     '''
     Return the max 1 month loss of a return rate column.
     '''
-    return data[col].min()
+    return data[cols].min()
 
-def max_drawdown(data: pd.DataFrame, col: str):
+def max_drawdown(data: pd.DataFrame, cols: Union[str, List[str]]):
     '''
     Return the max drawdown of a return rate column.
     '''
-    log_ret = np.log(data[col] + 1)
+    log_ret = np.log(data[cols] + 1)
     log_ret = log_ret.cumsum()
     rolling_peak = np.maximum.accumulate(log_ret)
     drawdowns = rolling_peak - log_ret
@@ -64,7 +65,7 @@ def long_short(data: pd.DataFrame, col: str, k: int = 10):
     # monthly stock limit: 50 ~ 100
     f = lambda x: min(max(len(x) // k, 50), 100)
     group_ret_gap = grouped.apply(
-        lambda x: x[-f(x):].mean() - x[:f(x)].mean()
+        lambda x: x[-f(x):].mean() #- x[:f(x)].mean()
     )
     return group_ret_gap
 
@@ -75,7 +76,6 @@ if __name__ == '__main__':
 
     col = 'lgbm'
     port_ret = long_short(data, col).to_frame()
-    # print(port_ret)
 
     col = 'stock_exret'
     print('Annualized Sharpe:', sharpe(port_ret, col))
@@ -83,7 +83,6 @@ if __name__ == '__main__':
     print('Max Drawdown:', max_drawdown(port_ret, col))
     strategy_ret = cum_ret(port_ret, col)
     
-
     # Plot the benchmark return. Benchmark is the equal weighted 
     # portfolio of all the stocks.
     bm_ret = data.groupby(level=0)['stock_exret'].mean().to_frame()
@@ -92,5 +91,4 @@ if __name__ == '__main__':
     plt.plot(strategy_ret)
     plt.plot(bm_ret)
     plt.legend(['strategy', 'benchmark'])
-
     plt.show()
