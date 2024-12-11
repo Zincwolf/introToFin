@@ -22,6 +22,18 @@ def cum_ret(data: pd.DataFrame, cols: Union[str, List[str]]):
     temp = temp.cumprod() - 1
     return temp
 
+def inv_cum_ret(data: pd.DataFrame, cols: Union[str, List[str]]):
+    '''
+    An inverse function of `cum_ret`.
+    '''
+    temp = data[cols] + 1
+    temp = temp / temp.shift(1) - 1
+    
+    first = data.index[0]
+    temp.iloc[0] = data.loc[first, cols]
+
+    return temp
+
 def max_1m_loss(data: pd.DataFrame, cols: Union[str, List[str]]):
     '''
     Return the max 1 month loss of a return rate column.

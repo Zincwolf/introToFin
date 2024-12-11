@@ -12,6 +12,7 @@ import PortAnalysis as pa
 import os
 import time
 from tqdm import tqdm
+import statsmodels.api as sm
 
 class AlphaMiner:
     '''
@@ -114,7 +115,7 @@ class AlphaMiner:
         group_ret['rng'] = abs(group_ret['G0'] - group_ret[f'G{k - 1}'])
 
         self.output = pd.concat([self.output, group_ret], axis=1)
-        # 存储分组数，调色用
+        # 存储分组数
         self.group_num = k
 
     def benchmark(self):
@@ -124,6 +125,31 @@ class AlphaMiner:
         monthly_bm = self.data.groupby(level=0)['stock_exret'].mean().to_frame()
         self.output['bm'] = pa.cum_ret(monthly_bm, 'stock_exret')
 
+    def alpha_beta(self):
+        '''
+        计算G0 和 G_{k-1}相对市场基准的表现.
+        NOTE: 为简化, 暂时使用全数据集, 不能作为策略依据, 仅供参考
+        '''
+        target = ['bm', 'G0', f'G{self.group_num - 1}']
+        assert set(target).issubset(set(self.output.columns)), 'Please calculate group return and benchmark.'
+
+        g1 = pa.inv_cum_ret(self.output, 'G0')
+        gk = pa.inv_cum_ret(self.output, f'G{self.group_num - 1}')
+        bm = pa.inv_cum_ret(self.output, 'bm')
+        bm = sm.add_constant(bm.values)
+        g1, gk = g1.values, gk.values
+
+        model1 = sm.OLS(g1, bm)
+        modelk = sm.OLS(gk, bm)
+
+        res1 = model1.fit()
+        resk = modelk.fit()
+
+        a1, b1 = res1.params
+        ak, bk = resk.params
+
+        return (a1, b1, ak, bk)
+
     def draw(self, save_path: str = None, is_show: bool = True):
         '''
         绘制分组收益率, 残差, bm和IC, IR
@@ -132,29 +158,40 @@ class AlphaMiner:
         target = ['bm', 'rng'] + [f'G{i}' for i in range(self.group_num)]
         assert set(target).issubset(set(self.output.columns)), 'Please calculate group return and benchmark.'
 
-        palette = sns.color_palette("tab20", self.group_num) + sns.color_palette("Set2", 10)
-        # 使用 gridspec 创建更灵活的布局
-        plt.figure(figsize=(18, 16))
-        gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])  # 第一张子图高度是2，第二张子图高度是1
+        # 计算极端组相对于全市场的alpha, beta
+        ab_result = self.alpha_beta()
+        a1, b1, ak, bk = tuple([round(x, 4) for x in ab_result])
 
-        # 第一张子图
+        palette = sns.color_palette("tab20", 20)
+        plt.figure(figsize=(18, 16))
+        gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])
+
+        # 分组收益率，极差和benchmark
         ax0 = plt.subplot(gs[0])
         self.output[target].plot(ax=ax0, color=palette)
         ax0.set_ylabel('exret')
         ax0.set_xlabel('month')
         ax0.set_title(self.fac)
+        text1 = f'alpha_0 = {a1}, beta_0 = {b1}'
+        text2 = f'alpha_{self.group_num - 1} = {ak}, beta_{self.group_num - 1} = {bk}'
+        ax0.text(0.1, 0.7, text1, transform=ax0.transAxes)
+        ax0.text(0.1, 0.6, text2, transform=ax0.transAxes)
 
-        # 第二张子图
-        target2 = ['rank_ic', 'ir']
-        ax1 = plt.subplot(gs[1])
+        # rank ic，ir（扩展窗口或滑动窗口）
+        target2 = ['rank_ic'] + [i for i in self.output.columns if i.startswith('ir')]
         if set(target2).issubset(set(self.output.columns)):
+            mean_ic_ir = self.output[target2].mean().to_string()
+            ax1 = plt.subplot(gs[1])
             self.output[target2].plot(ax=ax1)
+            ax1.axhline(0, color='gray', linestyle='--')
             ax1.set_xlabel('month')
             ax1.set_title('Rank IC and IR')
+            ax1.set_ylim(-0.7, 0.7)
+            ax1.text(0.1, -0.62, mean_ic_ir, transform=ax0.transAxes, fontsize=8)
 
         if save_path is not None:
             save_path = os.path.join(save_path, f'{self.fac}.png')
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.savefig(save_path, dpi=200, bbox_inches='tight')
         
         if is_show:
             plt.show()
@@ -167,7 +204,20 @@ if __name__ == '__main__':
     data_path = '/Users/znw/Code_python/introToFin_utils/stock_sample.csv'
     data = AlphaMiner.clean(data_path)
 
-    # fac = 'ret_9_1'
+    # 构造新因子
+    # (建议不要再把新因子作为一列放进data，在大量构造的时候会引起内存碎片化)
+    # news = data[['permno', 'stock_exret']].copy()
+    # news['alpha_1'] = (data['ebit_bev'] + data['ebit_sale'] + data['ebitda_mev']) / 3
+
+    # fac = 'alpha_1'
+    # miner = AlphaMiner(news, fac)
+    # miner.rank_ic()
+    # miner.ir()
+    # miner.ir(12)
+    # miner.group()
+    # miner.benchmark()
+    # miner.draw()
+
     no_fac = ['permno', 'stock_exret']
     fac_list = list(set(data.columns) - set(no_fac))
     for fac in tqdm(fac_list):
