@@ -43,9 +43,7 @@ class AlphaMiner:
         if is_zscore:
             no_z = ['permno', 'stock_exret']
             cols_z = list(set(data.columns) - set(no_z))
-            ex = lambda x: x.expanding(1)
-            ex_z = lambda x: (ex(x) - ex(x).mean()) / ex(x).std()
-            data_processed = data[cols_z].groupby(level=0).transform(ex_z)
+            data_processed = pa.zscore(data, cols_z)
             data = pd.concat([data[no_z], data_processed], axis=1)
         
         print('Time for cleaning:', round(time.time() - st, 2), 's\n')
@@ -206,25 +204,26 @@ if __name__ == '__main__':
 
     # 构造新因子
     # (建议不要再把新因子作为一列放进data，在大量构造的时候会引起内存碎片化)
-    # news = data[['permno', 'stock_exret']].copy()
+    news = data[['permno', 'stock_exret']].copy()
     # news['alpha_1'] = (data['ebit_bev'] + data['ebit_sale'] + data['ebitda_mev']) / 3
+    news['alpha_2'] = (pa.zscore(data['rmax5_21d']) - pa.zscore(data['sale_me']))
 
-    # fac = 'alpha_1'
-    # miner = AlphaMiner(news, fac)
-    # miner.rank_ic()
-    # miner.ir()
+    fac = 'alpha_2'
+    miner = AlphaMiner(news, fac)
+    miner.rank_ic()
+    miner.ir()
     # miner.ir(12)
-    # miner.group()
-    # miner.benchmark()
-    # miner.draw()
+    miner.group()
+    miner.benchmark()
+    miner.draw()
 
-    no_fac = ['permno', 'stock_exret']
-    fac_list = list(set(data.columns) - set(no_fac))
-    for fac in tqdm(fac_list):
-        miner = AlphaMiner(data, fac)
-        miner.rank_ic()
-        miner.ir()
-        miner.group()
-        miner.benchmark()
-        miner.draw(save_path='/Users/znw/Desktop/FactorFigs', is_show=False)
-        del miner
+    # no_fac = ['permno', 'stock_exret']
+    # fac_list = list(set(data.columns) - set(no_fac))
+    # for fac in tqdm(fac_list):
+    #     miner = AlphaMiner(data, fac)
+    #     miner.rank_ic()
+    #     miner.ir()
+    #     miner.group()
+    #     miner.benchmark()
+    #     miner.draw(save_path='/Users/znw/Desktop/FactorFigs', is_show=False)
+    #     del miner

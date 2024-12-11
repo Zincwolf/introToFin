@@ -8,43 +8,106 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from typing import Union, List
 
-def sharpe(data: pd.DataFrame, cols: Union[str, List[str]]):
+def sharpe(
+        data: Union[pd.DataFrame, pd.Series], 
+        cols: Union[str, List[str], None] = None
+    ):
     '''
-    Return the annualized sharpe ratio of a return rate column.
+    Return the annualized sharpe ratio.
     '''
-    return data[cols].mean() / data[cols].std() * np.sqrt(12)
+    if isinstance(data, pd.DataFrame):
+        if cols is not None:
+            data = data[cols]
+        else:
+            raise ValueError('Please input columns.')
+        
+    return data.mean() / data.std() * np.sqrt(12)
 
-def cum_ret(data: pd.DataFrame, cols: Union[str, List[str]]):
+def zscore(
+        data: Union[pd.DataFrame, pd.Series], 
+        cols: Union[str, List[str], None] = None
+    ):
     '''
-    Return the cumulative return of a return rate column.
+    Return the zscore. 仅仅在每个月的横截面上求z分数.
     '''
-    temp = data[cols] + 1
+    if isinstance(data, pd.DataFrame):
+        if cols is not None:
+            data = data[cols]
+        else:
+            raise ValueError('Please input columns.')
+        
+    z = lambda x: (x - x.mean()) / x.std()
+    data_processed = data.groupby(level=0).transform(z)
+    return data_processed
+
+def cum_ret(
+        data: Union[pd.DataFrame, pd.Series], 
+        cols: Union[str, List[str], None] = None
+    ):
+    '''
+    Return the cumulative return.
+    '''
+    if isinstance(data, pd.DataFrame):
+        if cols is not None:
+            data = data[cols]
+        else:
+            raise ValueError('Please input columns.')
+        
+    temp = data + 1
     temp = temp.cumprod() - 1
     return temp
 
-def inv_cum_ret(data: pd.DataFrame, cols: Union[str, List[str]]):
+def inv_cum_ret(
+        data: Union[pd.DataFrame, pd.Series], 
+        cols: Union[str, List[str], None] = None
+    ):
     '''
     An inverse function of `cum_ret`.
     '''
-    temp = data[cols] + 1
+    if isinstance(data, pd.DataFrame):
+        if cols is not None:
+            data = data[cols]
+        else:
+            raise ValueError('Please input columns.')
+        
+    temp = data + 1
     temp = temp / temp.shift(1) - 1
     
-    first = data.index[0]
-    temp.iloc[0] = data.loc[first, cols]
+    # first = data.index[0]
+    # temp.iloc[0] = data.loc[first, cols]
+    temp.iloc[0] = data.iloc[0]
 
     return temp
 
-def max_1m_loss(data: pd.DataFrame, cols: Union[str, List[str]]):
+def max_1m_loss(
+        data: Union[pd.DataFrame, pd.Series], 
+        cols: Union[str, List[str], None] = None
+    ):
     '''
-    Return the max 1 month loss of a return rate column.
+    Return the max 1 month loss.
     '''
-    return data[cols].min()
+    if isinstance(data, pd.DataFrame):
+        if cols is not None:
+            data = data[cols]
+        else:
+            raise ValueError('Please input columns.')
+        
+    return data.min()
 
-def max_drawdown(data: pd.DataFrame, cols: Union[str, List[str]]):
+def max_drawdown(
+        data: Union[pd.DataFrame, pd.Series], 
+        cols: Union[str, List[str], None] = None
+    ):
     '''
-    Return the max drawdown of a return rate column.
+    Return the max drawdown.
     '''
-    log_ret = np.log(data[cols] + 1)
+    if isinstance(data, pd.DataFrame):
+        if cols is not None:
+            data = data[cols]
+        else:
+            raise ValueError('Please input columns.')
+        
+    log_ret = np.log(data + 1)
     log_ret = log_ret.cumsum()
     rolling_peak = np.maximum.accumulate(log_ret)
     drawdowns = rolling_peak - log_ret
