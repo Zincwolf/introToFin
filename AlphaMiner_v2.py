@@ -205,22 +205,56 @@ if __name__ == '__main__':
     # 构造新因子
     # (建议不要再把新因子作为一列放进data，在大量构造的时候会引起内存碎片化)
     news = data[['permno', 'stock_exret']].copy()
-    # news['alpha_1'] = (data['ebit_bev'] + data['ebit_sale'] + data['ebitda_mev']) / 3
-    news['alpha_2'] = (pa.zscore(data['rmax5_21d']) - pa.zscore(data['sale_me']))
 
-    fac = 'alpha_2'
+    # XXX: IR +
+    # aliq_at, ebit_bev, ebitda_mev, eqnpo_12m, eqnpo_me, mispricing_mgmt, ni_me, ocf_at, ope_be, sale_bev, sale_me
+    # XXX: IR -
+    # bidaskhl_21d, chcsho_12m, eqnetis_at, ivol_capm_25d, rmax1_21d, rmax5_21d, rmax5_rvol_21d, rvol_21d
+
+    news['ir_plus'] = pa.zscore(data['ebitda_mev'] + data['mispricing_mgmt'])
+    # news['a1'] = (data['ebit_bev'] + data['ebit_sale'] + data['ebitda_mev']) / 3
+    # news['a2'] = pa.zscore(data['rmax5_21d']) + (pa.zscore(data['ebit_bev'] + data['ebit_sale'] + data['ebitda_mev'])) / 3
+    # news['a3'] = pa.zscore(data['rmax5_21d']) * pa.zscore(data['ebitda_mev'])
+    # news['a4'] = (pa.zscore(data['betabab_1260d']) + pa.zscore(data['bidaskhl_21d'])) / 2
+
+    # news['a5'] = pa.zscore(data['eqnetis_at'])
+    # news['a13'] = 0.8 * news['a1'] + 0.2 * news['a3']
+    # news['a24_chc'] = (news['a2'] + news['a4'] + pa.zscore(data['chcsho_12m'])) / 3
+    
+    # print(news.describe())
+    # news.to_csv('news_list_1213.csv')
+    fac = 'ir_plus'
     miner = AlphaMiner(news, fac)
     miner.rank_ic()
     miner.ir()
-    # miner.ir(12)
+    miner.ir(24)
     miner.group()
     miner.benchmark()
     miner.draw()
 
+    port_ret = pa.long_short(news, fac, ascending=False, method='long').to_frame()
+
+    col = 'stock_exret'
+    print('Annualized Sharpe:', pa.sharpe(port_ret, col))
+    print('Max 1m loss:', pa.max_1m_loss(port_ret, col))
+    print('Max Drawdown:', pa.max_drawdown(port_ret, col))
+    strategy_ret = pa.cum_ret(port_ret, col)
+    
+    # Plot the benchmark return. Benchmark is the equal weighted 
+    # portfolio of all the stocks.
+    bm_ret = data.groupby(level=0)['stock_exret'].mean().to_frame()
+    bm_ret = pa.cum_ret(bm_ret, col)
+
+    plt.plot(strategy_ret)
+    plt.plot(bm_ret)
+    plt.legend(['strategy', 'benchmark'])
+    plt.show()
+
+    # XXX: 对大量因子画图
     # no_fac = ['permno', 'stock_exret']
-    # fac_list = list(set(data.columns) - set(no_fac))
+    # fac_list = ['a1']
     # for fac in tqdm(fac_list):
-    #     miner = AlphaMiner(data, fac)
+    #     miner = AlphaMiner(news, fac)
     #     miner.rank_ic()
     #     miner.ir()
     #     miner.group()

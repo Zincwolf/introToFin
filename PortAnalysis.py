@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
-from typing import Union, List
+from typing import Union, List, Literal
 
 def sharpe(
         data: Union[pd.DataFrame, pd.Series], 
@@ -122,7 +122,13 @@ def r2(data: pd.DataFrame, real: str, pred: str):
     ) / np.sum(np.square(data[real]))
     return res
 
-def long_short(data: pd.DataFrame, col: str, k: int = 10):
+def long_short(
+        data: pd.DataFrame, 
+        col: str, 
+        k: int = 10, 
+        ascending: bool = True,
+        method: Literal['long', 'short', 'long_short'] = 'long'
+    ):
     '''
     A demo strategy. Long the top 1/k and short the bottom 1/k by equal weights.
 
@@ -133,23 +139,29 @@ def long_short(data: pd.DataFrame, col: str, k: int = 10):
     or predicted relevance score).
     '''
     data = data.groupby(level=0, group_keys=False).apply(
-        # ascending
-        lambda x: x.sort_values(col)
+        lambda x: x.sort_values(col, ascending=ascending)
     )
     grouped = data.groupby(level=0, group_keys=False)['stock_exret']
     # monthly stock limit: 50 ~ 100
     f = lambda x: min(max(len(x) // k, 50), 100)
-    group_ret_gap = grouped.apply(
-        lambda x: x[-f(x):].mean() #- x[:f(x)].mean()
-    )
+
+    if method == 'long':
+        select = lambda x: x[:f(x)].mean()
+    elif method == 'short':
+        select = lambda x: - x[-f(x):].mean()
+    else:
+        select = lambda x: x[:f(x)].mean() - x[-f(x):].mean()
+    group_ret_gap = grouped.apply(select)
     return group_ret_gap
 
 if __name__ == '__main__':
-    data = pd.read_csv('/Users/znw/Code_python/introToFin/output_lgbm.csv')
+    # data = pd.read_csv('/Users/znw/Code_python/introToFin/output_lgbm.csv')
+    # data = pd.read_csv('/Users/znw/Code_python/introToFin_utils/output.csv')
+    data = pd.read_csv('/Users/znw/Code_python/introToFin_utils/news_list_1213.csv')
     data['date'] = pd.to_datetime(data['date'])
     data.set_index('date', inplace=True)
 
-    col = 'lgbm'
+    col = 'a24_chc'
     port_ret = long_short(data, col).to_frame()
 
     col = 'stock_exret'
