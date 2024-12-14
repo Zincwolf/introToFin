@@ -156,13 +156,20 @@ def long_short(
 
 if __name__ == '__main__':
     # data = pd.read_csv('/Users/znw/Code_python/introToFin/output_lgbm.csv')
+    data = pd.read_csv('/Users/znw/Code_python/introToFin/output_mlp.csv')
     # data = pd.read_csv('/Users/znw/Code_python/introToFin_utils/output.csv')
-    data = pd.read_csv('/Users/znw/Code_python/introToFin_utils/news_list_1213.csv')
+    # data = pd.read_csv('/Users/znw/Code_python/introToFin_utils/news_list_1213.csv')
     data['date'] = pd.to_datetime(data['date'])
     data.set_index('date', inplace=True)
 
-    col = 'a24_chc'
-    port_ret = long_short(data, col).to_frame()
+    # col = 'lgbm'
+    # port_ret = long_short(data, col, ascending=False).to_frame()
+
+    col = 'mlp'
+    port_ret = long_short(data, col, ascending=False).to_frame()
+
+    # col = 'a24_chc'
+    # port_ret = long_short(data, col).to_frame()
 
     col = 'stock_exret'
     print('Annualized Sharpe:', sharpe(port_ret, col))

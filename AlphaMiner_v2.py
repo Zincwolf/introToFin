@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
 import PortAnalysis as pa
+from Factory import Factory
 import os
 import time
 from tqdm import tqdm
@@ -18,38 +19,6 @@ class AlphaMiner:
     '''
     Analyze a single factor.
     '''
-
-    @staticmethod
-    def clean(data_path: str, is_zscore: bool = False):
-        '''
-        0. 读取数据
-        1. 索引换成DatetimeIndex
-        2. 清洗数据，收益率没有就删，因子没有就填充当月中位数
-        3. 按需要计算z分数, 每月扩展窗口, 均值和标准差取窗口内的, 确保不利用未来数据
-        '''
-        st = time.time()
-        trivials = ['year', 'month', 'stock_ticker', 'comp_name']
-
-        data = pd.read_csv(data_path)
-        data.drop(columns=trivials, inplace=True)
-        data['date'] = pd.to_datetime(data['date'])
-        data.set_index('date', inplace=True)
-
-        data.dropna(subset=['stock_exret'], inplace=True)
-        data = data.groupby(level=0).transform(
-            lambda x: x.fillna(x.median())
-        )
-
-        if is_zscore:
-            no_z = ['permno', 'stock_exret']
-            cols_z = list(set(data.columns) - set(no_z))
-            data_processed = pa.zscore(data, cols_z)
-            data = pd.concat([data[no_z], data_processed], axis=1)
-        
-        print('Time for cleaning:', round(time.time() - st, 2), 's\n')
-
-        return data
-    
     def __init__(self, data: pd.DataFrame, fac: str) -> None:
         '''
         Load the data and extract the `fac` column.
@@ -66,8 +35,9 @@ class AlphaMiner:
         计算所有时间内的横截面rank ic. 
         t-1期所有股票的因子值和t期所有股票超额收益率的spearman秩相关系数
         '''
+        # 不需要先排名
         monthly_ric = self.data.groupby(level=0).apply(
-            lambda x: x['stock_exret'].rank(method='min').corr(x[self.fac].rank(method='min'), 'spearman') 
+            lambda x: x['stock_exret'].corr(x[self.fac], 'spearman') 
         )
         self.output['rank_ic'] = monthly_ric
 
@@ -200,7 +170,7 @@ if __name__ == '__main__':
 
     # NOTE: Set your data path here
     data_path = '/Users/znw/Code_python/introToFin_utils/stock_sample.csv'
-    data = AlphaMiner.clean(data_path)
+    data = Factory.clean(data_path)
 
     # 构造新因子
     # (建议不要再把新因子作为一列放进data，在大量构造的时候会引起内存碎片化)
@@ -228,7 +198,7 @@ if __name__ == '__main__':
     miner.rank_ic()
     miner.ir()
     miner.ir(24)
-    miner.group()
+    miner.group(4)
     miner.benchmark()
     miner.draw()
 
