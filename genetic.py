@@ -3,6 +3,7 @@ import numpy as np
 from Factory import Factory
 from gplearn.genetic import SymbolicTransformer
 from gplearn.fitness import make_fitness
+from gplearn.functions import make_function
 from scipy.stats import spearmanr
 
 # 使用gplearn的遗传算法框架挖因子
@@ -37,13 +38,35 @@ def rank_ic(y, y_pred, w):
 
     return abs(sum(month_rank_ic) / (months - 1))
 
+def cross_section_rank(x):
+    '''
+    用作gplearn的自定义函数
+    其中x是全样本的某一因子值, 需要利用全局变量month_num来计算每个月的rank
+    '''
+    # 应该不需要常数检查，因为生成出的因子是若是常数，rank_ic会给予很大的负惩罚
+    month_rank = []
+    months = len(month_num)
+    for i in range(1, months):
+        x_month = x[month_num[i-1]:month_num[i]]
+        ranks = np.zeros_like(x_month)
+        ranks[x_month.argsort()] = np.arange(len(x_month))
+        ranks = ranks / len(x_month)
+        month_rank.append(ranks)
+    return np.concatenate(month_rank)
+
+def moving_average(x):
+    '''
+    用作gplearn的自定义函数
+    其中x是全样本的某一因子值, 需要利用全局变量month_num来计算每个月的rank
+    '''
+
 target = make_fitness(function=rank_ic, greater_is_better=True)
 
 feature_names = list(set(data.columns) - set(Factory.label_cols))
 X = data[feature_names].values
 y = data['stock_exret'].values
 
-function_set = ['add', 'sub', 'mul', 'div', 'log', 'sqrt', 'sin', 'cos', 'tan']
+function_set = ['add', 'sub', 'mul', 'div', 'log', 'sqrt', 'inv', 'abs']
 
 gp = SymbolicTransformer(
     population_size=1000,
