@@ -1,5 +1,5 @@
 '''
-Factor Mining and evaluation framework.
+Factor mining and evaluation framework.
 '''
 
 import pandas as pd
@@ -11,9 +11,8 @@ import seaborn as sns
 import PortAnalysis as pa
 from Factory import Factory
 import os
-import time
-from tqdm import tqdm
 import statsmodels.api as sm
+from tqdm import tqdm
 
 class AlphaMiner:
     '''
@@ -27,15 +26,15 @@ class AlphaMiner:
         self.data = data[['permno', 'stock_exret', fac]]
         self.fac = fac
 
-        # output的索引是月，而且不重复
         self.output = pd.DataFrame(index=self.data.index.unique())
 
     def rank_ic(self):
         '''
-        计算所有时间内的横截面rank ic. 
-        t-1期所有股票的因子值和t期所有股票超额收益率的spearman秩相关系数
+        Calculate cross-sectional rank IC for all time periods.
+
+        Rank IC is the Spearman rank correlation between the factor values 
+        at month t-1 and the stock excess returns at month t.
         '''
-        # 不需要先排名
         monthly_ric = self.data.groupby(level=0).apply(
             lambda x: x['stock_exret'].corr(x[self.fac], 'spearman') 
         )
@@ -43,10 +42,12 @@ class AlphaMiner:
 
     def ir(self, window: int = None):
         '''
-        如果传入window, 计算前window个月的滚动ir。不足前window个月, 计算之前所有月份的ir。
-        如果没有传入window, 计算之前所有月份的ir。
+        Calculate the historical IR or rolling IR.
 
-        第一个月ir认为是nan, 因为没有标准差。这样设定不影响绘图。
+        If `window` is not None, calculate the rolling IR with a window of `window` months.
+        Otherwise, calculate the historical IR.
+
+        The first month's IR is set to nan because there is no standard deviation.
         '''
         assert 'rank_ic' in self.output.columns, 'Please calculate rank ic first.'
         
@@ -61,42 +62,50 @@ class AlphaMiner:
 
     def group(self, k: int = 10):
         '''
-        每个月, 将上个月因子值排序, 均分为k组 (用first方法保证均匀)。
-        计算分组收益率和极差。
+        Calculate the group return and range.
+
+        For each month, rank the factor values of the previous month and divide them
+        into k groups (use the `first` method to ensure uniformity).
         '''
         grouped = self.data.groupby(level=0)[self.fac]
         ranked = self.data.copy()
 
-        # 对每个股票生成0～k-1的排名标签
+        # Get ranks from 0 to k-1 for each stock
         ranked['rank'] = (grouped.rank(method='first') - 1) // (grouped.size() // k + 1)
         ranked['rank'] = ranked['rank'].astype(int).astype(str)
 
-        # 每个月，对每个排名的股票分别计算收益率均值
-        # 索引level 0是datetime，把level 1设置成排名
+        # For each month, calculate the average return of each rank
+        # The index level 0 is datetime, set level 1 as rank
         ranked.set_index('rank', append=True, inplace=True)
         group_ret = ranked.groupby(level=[0, 1])['stock_exret'].mean().unstack()
         group_ret.columns = 'G' + group_ret.columns
         
-        # 求累计收益率和极差
+        # Calculate cumulative return and range
         target = [f'G{i}' for i in range(k)]
         group_ret[target] = pa.cum_ret(group_ret, target)
         group_ret['rng'] = abs(group_ret['G0'] - group_ret[f'G{k - 1}'])
 
         self.output = pd.concat([self.output, group_ret], axis=1)
-        # 存储分组数
+        # store the number of groups
         self.group_num = k
 
     def benchmark(self):
         '''
-        计算每月市场所有股票收益率的均值.
+        Calculate the benchmark return. 
+        
+        The benchmark is the equal weighted portfolio of all the 
+        stocks in the market.
         '''
         monthly_bm = self.data.groupby(level=0)['stock_exret'].mean().to_frame()
         self.output['bm'] = pa.cum_ret(monthly_bm, 'stock_exret')
 
     def alpha_beta(self):
         '''
-        计算G0 和 G_{k-1}相对市场基准的表现.
-        NOTE: 为简化, 暂时使用全数据集, 不能作为策略依据, 仅供参考
+        Calculate the alpha and beta of the extreme groups relative 
+        to the market benchmark.
+
+        NOTE: For simplicity, use the entire dataset. Cannot be 
+        used in a strategy, only for reference.
         '''
         target = ['bm', 'G0', f'G{self.group_num - 1}']
         assert set(target).issubset(set(self.output.columns)), 'Please calculate group return and benchmark.'
@@ -120,13 +129,14 @@ class AlphaMiner:
 
     def draw(self, save_path: str = None, is_show: bool = True):
         '''
-        绘制分组收益率, 残差, bm和IC, IR
-        如果给了`save_path`就保存在这个目录下, 文件名是因子名
+        Draw the group return, benchmark, rank IC, and IR.
+
+        If `save_path` is not None, save the figure to this directory.
         '''
         target = ['bm', 'rng'] + [f'G{i}' for i in range(self.group_num)]
         assert set(target).issubset(set(self.output.columns)), 'Please calculate group return and benchmark.'
 
-        # 计算极端组相对于全市场的alpha, beta
+        # Calculate the alpha and beta of the extreme groups relative to the market benchmark
         ab_result = self.alpha_beta()
         a1, b1, ak, bk = tuple([round(x, 4) for x in ab_result])
 
@@ -134,7 +144,7 @@ class AlphaMiner:
         plt.figure(figsize=(18, 16))
         gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])
 
-        # 分组收益率，极差和benchmark
+        # Group return, range and benchmark
         ax0 = plt.subplot(gs[0])
         self.output[target].plot(ax=ax0, color=palette)
         ax0.set_ylabel('exret')
@@ -145,7 +155,7 @@ class AlphaMiner:
         ax0.text(0.1, 0.7, text1, transform=ax0.transAxes)
         ax0.text(0.1, 0.6, text2, transform=ax0.transAxes)
 
-        # rank ic，ir（扩展窗口或滑动窗口）
+        # Rank IC and IR
         target2 = ['rank_ic'] + [i for i in self.output.columns if i.startswith('ir')]
         if set(target2).issubset(set(self.output.columns)):
             mean_ic_ir = self.output[target2].mean().to_string()
@@ -169,40 +179,33 @@ class AlphaMiner:
 if __name__ == '__main__':
 
     # NOTE: Set your data path here
-    data_path = '/Users/znw/Code_python/introToFin_utils/stock_sample.csv'
+    data_path = 'C:\\CODES\\CODE_PYTHON\\stock_sample.csv'
     data = Factory.clean(data_path)
 
-    # 构造新因子
-    # (建议不要再把新因子作为一列放进data，在大量构造的时候会引起内存碎片化)
+    # The dataframe `news` will store new factors.
+    # It's advised not to put new factors back to `data` as a column,
+    # because it may cause memory fragmentation when constructing a large number of factors.
     news = data[['permno', 'stock_exret']].copy()
 
-    # XXX: IR +
+    # DEMO: Use the original factors in the data
+    # XXX: IR + factors in original data
     # aliq_at, ebit_bev, ebitda_mev, eqnpo_12m, eqnpo_me, mispricing_mgmt, ni_me, ocf_at, ope_be, sale_bev, sale_me
-    # XXX: IR -
+    # XXX: IR - factors in original data
     # bidaskhl_21d, chcsho_12m, eqnetis_at, ivol_capm_25d, rmax1_21d, rmax5_21d, rmax5_rvol_21d, rvol_21d
 
     news['ir_plus'] = pa.zscore(data['ebitda_mev'] + data['mispricing_mgmt'])
-    # news['a1'] = (data['ebit_bev'] + data['ebit_sale'] + data['ebitda_mev']) / 3
-    # news['a2'] = pa.zscore(data['rmax5_21d']) + (pa.zscore(data['ebit_bev'] + data['ebit_sale'] + data['ebitda_mev'])) / 3
-    # news['a3'] = pa.zscore(data['rmax5_21d']) * pa.zscore(data['ebitda_mev'])
-    # news['a4'] = (pa.zscore(data['betabab_1260d']) + pa.zscore(data['bidaskhl_21d'])) / 2
-
-    # news['a5'] = pa.zscore(data['eqnetis_at'])
-    # news['a13'] = 0.8 * news['a1'] + 0.2 * news['a3']
-    # news['a24_chc'] = (news['a2'] + news['a4'] + pa.zscore(data['chcsho_12m'])) / 3
-    
-    # print(news.describe())
-    # news.to_csv('news_list_1213.csv')
     fac = 'ir_plus'
     miner = AlphaMiner(news, fac)
     miner.rank_ic()
     miner.ir()
     miner.ir(24)
-    miner.group(4)
+    miner.group(10)
     miner.benchmark()
     miner.draw()
 
-    port_ret = pa.long_short(news, fac, ascending=False, method='long').to_frame()
+    # After you close the figure, the following code will construct a simple
+    # long-short strategy based on the factor you just analyzed.
+    port_ret = pa.long_short_original(news, fac, ascending=False, method='long').to_frame()
 
     col = 'stock_exret'
     print('Annualized Sharpe:', pa.sharpe(port_ret, col))
@@ -210,8 +213,7 @@ if __name__ == '__main__':
     print('Max Drawdown:', pa.max_drawdown(port_ret, col))
     strategy_ret = pa.cum_ret(port_ret, col)
     
-    # Plot the benchmark return. Benchmark is the equal weighted 
-    # portfolio of all the stocks.
+    # Plot the benchmark return.
     bm_ret = data.groupby(level=0)['stock_exret'].mean().to_frame()
     bm_ret = pa.cum_ret(bm_ret, col)
 
@@ -220,7 +222,7 @@ if __name__ == '__main__':
     plt.legend(['strategy', 'benchmark'])
     plt.show()
 
-    # XXX: 对大量因子画图
+    # XXX: The following code can draw the effectiveness figure of all original factors.
     # no_fac = ['permno', 'stock_exret']
     # fac_list = ['a1']
     # for fac in tqdm(fac_list):
@@ -229,5 +231,5 @@ if __name__ == '__main__':
     #     miner.ir()
     #     miner.group()
     #     miner.benchmark()
-    #     miner.draw(save_path='/Users/znw/Desktop/FactorFigs', is_show=False)
+    #     miner.draw(save_path='/FactorFigs', is_show=False)
     #     del miner

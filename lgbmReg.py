@@ -1,20 +1,12 @@
 import lightgbm as lgb
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
 import pandas as pd
 import numpy as np
 import os
 import datetime as dt
 from lgbm_params import Params
-# from tools.factorSelect import factor_select
 from tqdm import tqdm
-
-# Load and process stock sample data
-# Predict stock excess returns using LightGBM
-
-data_path = os.path.dirname(os.getcwd())
-data_path_in = os.path.join(data_path, 'introToFinLocal','data', 'stock_sample.csv')
-data_path_out = os.path.join(data_path, 'introToFinLocal','data', 'output_lgbm.csv')
+from Factory import Factory
 
 def load_data(data_path: str) -> pd.DataFrame:
     '''
@@ -116,8 +108,14 @@ def split_data(
     return X_train, X_val, y_train, y_val
 
 if __name__ == '__main__':
+    
     # Load and process the data
-    data = load_data(data_path_in)
+    # NOTE: Set your data path here
+    data_path = os.path.dirname(os.getcwd())
+    data_path_in = 'C:\\CODES\\CODE_PYTHON\\stock_sample.csv'
+    data_path_out = os.path.join(data_path, 'output_lgbm.csv')
+    factory = Factory(data_path_in)
+    data = factory.load_data()
     
     out = []  # List to store yearly predictions
     OOS_R2_val = []  # List to store validation OOS R^2
@@ -125,7 +123,7 @@ if __name__ == '__main__':
     for i in tqdm(range(2008, 2022)):
         # Define validation period start date
         val_st = dt.datetime(i, 1, 1)
-        X_train, X_val, y_train, y_val = split_data(data, val_st)
+        X_train, X_val, y_train, y_val = factory.split_data(data, val_st)
         
         # Train the model and calculate validation R^2
         gbm, OOS_R2_val_value, this_features = lgbm_reg(X_train, y_train, X_val, y_val, Params.get(i-2008))

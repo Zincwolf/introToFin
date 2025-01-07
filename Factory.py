@@ -8,6 +8,7 @@ from tqdm import tqdm
 from typing import Union
 import time
 import random
+from sklearn.model_selection import train_test_split
 
 class Factory:
     '''
@@ -51,10 +52,7 @@ class Factory:
             cols: Union[str, list[str], None] = None
         ):
         '''
-        Return the monthly zscore of certain columns in `data`.
-
-        TODO: maybe we should add an option to change the original
-        dataframe rather than return only the selected columns.
+        Return the monthly cross-sectional zscore of certain columns in `data`.
         '''
         if isinstance(data, pd.DataFrame):
             if cols is not None:
@@ -72,12 +70,9 @@ class Factory:
         0. Read data from `data_path`.
         1. Set index to `pd.DatetimeIndex` and drop the trivial 
         columns: year, month, stock_ticker and comp_name.
-        2. Clean the data. Drop rows where stock_exret is missing.
+        2. Clean the data. Drop rows where stock_exret is missing. 
         Fill the missing factor values with the median at current month.
         3. Calculate z-scores for all the factors if `is_zscore=True`.
-
-        TODO: when function zscore is updated, you should also update
-        this function.
         '''
         st = time.time()
         trivials = ['year', 'month', 'stock_ticker', 'comp_name']
@@ -124,7 +119,6 @@ class Factory:
         if self.is_y_rank:
             grouped = data.groupby(level=0)['stock_exret']
             data['stock_exret_rank'] = (grouped.rank(method='min') - 1) // (grouped.size() // self.k + 1)
-            # data['stock_exret_rank'] = data['stock_exret_rank'].astype(int)
 
         return data
     
@@ -141,12 +135,12 @@ class Factory:
         Create PyTorch DataLoader with given data.
 
         ## Args:
-        - data (pd.DataFrame): contain features and labels.
-        - st (dt.datetime): the start datetime of your dataset. 
-        - et (dt.datetime): the end datetime of your dataset.
-        - batch_size (int): the size of a minibatch.
-        - is_train (bool, default True): if true, shuffle data before creating DataLoader.
-        - device (str, default 'cuda'): Try 'mps' for MacBook. 
+            - data (pd.DataFrame): contain features and labels.
+            - st (dt.datetime): the start datetime of your dataset. 
+            - et (dt.datetime): the end datetime of your dataset.
+            - batch_size (int): the size of a minibatch.
+            - is_train (bool, default True): if true, shuffle data before creating DataLoader.
+            - device (str, default 'cuda'): Try 'mps' for MacBook. 
         '''
         no_feature = Factory.label_cols.copy()
         label_col = 'stock_exret'
@@ -156,13 +150,13 @@ class Factory:
         features = data.loc[st:et, :].drop(columns=no_feature).values
         labels = data.loc[st:et, label_col].values
 
-        features = torch.tensor(features, dtype=torch.float32, device=device)#.reshape(-1, self.n_fac)
-        labels = torch.tensor(labels, dtype=torch.long, device=device)#.reshape(-1, 1)
+        features = torch.tensor(features, dtype=torch.float32, device=device)
+        labels = torch.tensor(labels, dtype=torch.long, device=device)
                 
         dataset = TensorDataset(features, labels)
         return DataLoader(dataset, batch_size, is_train)
 
-    def load_lgbm_dataset(
+    def load_lgbm_dataset_original(
             self,
             data: pd.DataFrame,
             val_st: dt.datetime,
@@ -178,8 +172,7 @@ class Factory:
         '''
         def shuffle_data(data: pd.DataFrame):
             # Shuffle the index for random batches.
-            # The DatetimeIndex is not unique so we 
-            # should shuffle on integer index
+            # The DatetimeIndex is not unique so we should shuffle on integer index
             data.reset_index(inplace=True)
             rand_idx = data.index.to_list()
             random.shuffle(rand_idx)
@@ -201,4 +194,35 @@ class Factory:
         X_val = val.drop(columns=no_feature)
         y_train, y_val = train[label_col], val[label_col]
 
+        return X_train, X_val, y_train, y_val
+
+    def split_data(
+        self, 
+        data: pd.DataFrame,
+        val_st: dt.datetime
+    ):
+        '''
+        Split the data into train and validation sets.
+        
+        ## Args:
+            - data (pd.DataFrame): Stock data.
+            - val_st (datetime): Start date of validation set (2 years duration).
+        
+        ## Returns:
+            - tuple: (X_train, X_val, y_train, y_val)
+        '''
+        val_et = val_st + pd.DateOffset(years=2) - dt.timedelta(days=1)
+        train_st = dt.datetime(2000,1,1)
+        len_val = len(data.loc[val_st:val_et])
+        
+        # Select features and labels
+        # feature selection proves to be useless here
+
+        features = data.loc[train_st:val_et].drop(columns=['stock_exret','permno'])
+        labels = data.loc[train_st:val_et, 'stock_exret']
+
+        # Split into train and validation sets
+        X_train, X_val, y_train, y_val = train_test_split(
+            features, labels, test_size=len_val, shuffle=False
+        )
         return X_train, X_val, y_train, y_val

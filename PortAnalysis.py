@@ -1,10 +1,9 @@
 '''
-A tool kit for port analysis.
+A tool kit for portfolio analysis.
 '''
 
 import pandas as pd
 import numpy as np
-import seaborn as sns
 from matplotlib import pyplot as plt
 from typing import Union, List, Literal
 
@@ -28,7 +27,7 @@ def zscore(
         cols: Union[str, List[str], None] = None
     ):
     '''
-    Return the zscore. 仅仅在每个月的横截面上求z分数.
+    Return the monthly cross-sectional zscore.
     '''
     if isinstance(data, pd.DataFrame):
         if cols is not None:
@@ -73,8 +72,6 @@ def inv_cum_ret(
     temp = data + 1
     temp = temp / temp.shift(1) - 1
     
-    # first = data.index[0]
-    # temp.iloc[0] = data.loc[first, cols]
     temp.iloc[0] = data.iloc[0]
 
     return temp
@@ -122,7 +119,7 @@ def r2(data: pd.DataFrame, real: str, pred: str):
     ) / np.sum(np.square(data[real]))
     return res
 
-def long_short(
+def long_short_original(
         data: pd.DataFrame, 
         col: str, 
         k: int = 10, 
@@ -154,35 +151,73 @@ def long_short(
     group_ret_gap = grouped.apply(select)
     return group_ret_gap
 
+def long_short(data: pd.DataFrame, col: str, k: int = 80):
+    '''
+    Weighted long-short strategy. Rank stocks based on the absolute value of predicted returns,
+    then assign weights based on the sign of the predicted return (positive for long, negative for short).
+    '''
+    # Rank stocks based on the absolute value of predicted returns
+    data = data.groupby(level=0, group_keys=False).apply(
+        lambda x: x.reindex(x[col].abs().sort_values(ascending=False).index)
+    )
+    
+    grouped = data.groupby(level=0, group_keys=False)
+
+    # The weights of long and short positions
+    def weighted_mean(x: pd.DataFrame, is_long: bool=True):
+        # Select the top k stocks based on the absolute value of predicted returns
+        top_k = x.iloc[:k].copy()
+        
+        # Determine long and short positions based on the sign of the predicted return
+        if is_long:
+            # Select stocks with positive predicted returns
+            long = top_k[top_k[col] > 0].copy()
+            return long['stock_exret'].mean() if long.size > 0 else 0
+        else:
+            # Select stocks with negative predicted returns
+            short = top_k[top_k[col] < 0].copy()
+            return short['stock_exret'].mean() if short.size > 0 else 0
+
+    # Calculate the returns of long and short positions
+    best_group_ret = grouped.apply(lambda x: weighted_mean(x, is_long=True))
+    worst_group_ret = grouped.apply(lambda x: weighted_mean(x, is_long=False))
+    
+    # Portfolio return
+    # The number of positive weights is n+, and the number of negative weights is n-.
+    # To deleverage, we need to sum up the absolute weights of long and short positions.
+    # and the absolute sum is n+ * (1 / n+) + n- * (1 / n-) = 2
+    port = (best_group_ret - worst_group_ret) / 2
+    port.name = 'stock_exret'
+    return port
+
 if __name__ == '__main__':
-    # data = pd.read_csv('/Users/znw/Code_python/introToFin/output_lgbm.csv')
-    data = pd.read_csv('/Users/znw/Code_python/introToFin/output_mlp.csv')
-    # data = pd.read_csv('/Users/znw/Code_python/introToFin_utils/output.csv')
-    # data = pd.read_csv('/Users/znw/Code_python/introToFin_utils/news_list_1213.csv')
+    # NOTE: RUN one of the models in the repository and get an output file.
+    # DEMO: Take LGBM as an example.
+    data = pd.read_csv('C:\\CODES\\CODE_PYTHON\\output_lgbm.csv')
     data['date'] = pd.to_datetime(data['date'])
     data.set_index('date', inplace=True)
 
-    # col = 'lgbm'
-    # port_ret = long_short(data, col, ascending=False).to_frame()
+    # NOTE: for mlp and lambdarank, use the following code.
+    # col = 'mlp' OR 'lgbm'(for lambdarank)
+    # port_ret = long_short_original(data, col, ascending=False)
 
-    col = 'mlp'
-    port_ret = long_short(data, col, ascending=False).to_frame()
+    col = 'lgbm'
+    port_ret = long_short(data, col)
 
-    # col = 'a24_chc'
-    # port_ret = long_short(data, col).to_frame()
-
-    col = 'stock_exret'
-    print('Annualized Sharpe:', sharpe(port_ret, col))
-    print('Max 1m loss:', max_1m_loss(port_ret, col))
-    print('Max Drawdown:', max_drawdown(port_ret, col))
-    strategy_ret = cum_ret(port_ret, col)
+    # col = 'stock_exret'
+    print('Annualized Sharpe:', sharpe(port_ret))
+    print('Max 1m loss:', max_1m_loss(port_ret))
+    print('Max Drawdown:', max_drawdown(port_ret))
+    strategy_ret = cum_ret(port_ret)
     
-    # Plot the benchmark return. Benchmark is the equal weighted 
-    # portfolio of all the stocks.
-    bm_ret = data.groupby(level=0)['stock_exret'].mean().to_frame()
-    bm_ret = cum_ret(bm_ret, col)
+    # Plot the benchmark return. 
+    bm_ret = data.groupby(level=0)['stock_exret'].mean()
+    bm_ret = cum_ret(bm_ret)
 
     plt.plot(strategy_ret)
     plt.plot(bm_ret)
+    plt.title('Cumulative Return')
+    plt.xlabel('month')
+    plt.ylabel('stock excess return')
     plt.legend(['strategy', 'benchmark'])
     plt.show()

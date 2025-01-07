@@ -1,16 +1,13 @@
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
-import numpy as np
 import pandas as pd
 import os
 import datetime as dt
 from tqdm import tqdm
-import PortAnalysis as pa
 from typing import Union
-import time
 from Factory import Factory
-    
+
 def get_mlp(
         n_fac: int, 
         num_hiddens1: int, 
@@ -46,11 +43,11 @@ def train(
     '''
     Train the model.
 
-    Args:
-        model: the model to train
-        train_dl: the training data loader
-        epochs: the number of epochs
-        lr: the learning rate
+    ## Args:
+        - model: the model to train
+        - train_dl: the training data loader
+        - epochs: the number of epochs
+        - lr: the learning rate
     '''
     model.to(device)
     optimizer = torch.optim.Adam(
@@ -61,8 +58,7 @@ def train(
         model.train()
         for features, labels in train_dl:
             optimizer.zero_grad()
-            outputs = model(features)#.reshape(labels.shape)
-            # outputs.to(device)
+            outputs = model(features)
             l = loss(outputs, labels)
             l.backward()
             optimizer.step()
@@ -77,9 +73,9 @@ def evaluate(
     '''
     Evaluate the model. Print the loss.
 
-    Args:
-        model: the model to evaluate
-        test_dl: the test data loader
+    ## Args:
+        - model: the model to evaluate
+        - test_dl: the test data loader
     '''
     model.eval()
     with torch.no_grad():
@@ -99,7 +95,7 @@ def predict(
         device: str = 'cuda'
     ):
     '''
-    Args:
+    ## Args:
         - input: DatetimeIndex + facs
     '''
     model.eval()
@@ -116,9 +112,10 @@ def predict(
 if __name__ == '__main__':
 
     # NOTE: set working directory
-    data_path = '/Users/znw/Code_python/introToFin_utils/stock_sample.csv'
+    data_path = 'C:\\CODES\\CODE_PYTHON\\stock_sample.csv'
+    # We finally give up the black_list and white_list method
     black_list_path = None
-    white_list_path = None #'E:/Collaborate/FinTech/white_list2.txt'
+    white_list_path = None
 
     black_list, white_list = None, None
     if black_list_path is not None:
@@ -162,7 +159,7 @@ if __name__ == '__main__':
         val_dl = fac.load_torch_dataset(data, val_st, val_et, batch_size, False, device)
         test = data[test_st:test_et]
 
-        # 通过验证集，逐年优化参数
+        # Optimize hyperparameters using the validation set
         best_lr, best_wd, min_loss, best_model = 0, 0, 99.0, None
         for lr in learning_rates:
             for wd in weight_decays:
