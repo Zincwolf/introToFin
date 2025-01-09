@@ -42,8 +42,10 @@ if __name__ == '__main__':
     strategy_rets = []
     for i in range(0, 5):
         fac = new_facs[i]
-        port_ret = pa.long_short_original(news, fac, ascending=False, method='long')
+        ascending = False if i != 4 else True
+        port_ret = pa.long_short_original(news, fac, ascending=ascending, method='long')
 
+        print('\nFactor:', fac)
         print('Annualized Sharpe:', pa.sharpe(port_ret))
         print('Max 1m loss:', pa.max_1m_loss(port_ret))
         print('Max Drawdown:', pa.max_drawdown(port_ret))
@@ -59,6 +61,6 @@ if __name__ == '__main__':
     strategy_rets = pd.DataFrame(strategy_rets + [bm_ret]).T
     strategy_rets.columns = new_col_names
     strategy_rets.plot()
-    plt.grid(True)
     plt.tight_layout()
+    plt.savefig('C:\\Users\\25286\\Downloads\\genetic_factors.eps', bbox_inches='tight')
     plt.show()
